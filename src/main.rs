@@ -1,98 +1,11 @@
-use serde::{Deserialize, Serialize};
+use instruction::Instruction;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+mod instruction;
 
-// Define the IdentifyBody struct
-#[derive(Debug, Deserialize, Serialize)]
-struct AuthBody {
-    client_id: Option<String>,
-    hostname: String,
-    user_agent: String,
-    feature_negotiation: bool,
-    tls_v1: bool,
-    deflate: bool,
-    snappy: bool,
-    sample_rate: Option<u8>,
-}
-
-const INSTRUCTION_AUTH: &str = "AUTH";
-const INSTRUCTION_PUB: &str = "PUB";
-const INSTRUCTION_SUB: &str = "SUB";
-// const INSTRUCTION_SUB: &str = "SUB";
 const MAX_BODY_SIZE: u32 = 10_2400;
 
-// Define the Message enum to represent different message types
-#[derive(Debug, Deserialize, Serialize)]
-enum Message {
-    Auth(AuthBody),
-    // 认证
-    Pub(String, Vec<u8>),
-    // 发布
-    Sub(String, String),
-    // 订阅
-    Rdy(u32),
-    // 订阅者准备好接收(1-n)条消息
-    Ack(String),
-    // 消费成功
-    Clean(String),
-    // 清空队列/主题
-    Del(String), // 删除队列/主题
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-enum Mode {
-    Topic(String),
-    Queue(String),
-}
-
-// TODO: Implement your message processing logic here
-
-// Function to handle IDENTIFY messages
-fn handle_identify(identify_body: AuthBody) -> String {
-    // TODO: Implement your IDENTIFY message processing logic
-    // For now, just return a placeholder response
-    "OK".to_string()
-}
-
-// Function to handle SUB messages
-fn handle_sub(namespace: String, channel_name: String) -> String {
-    // TODO: Implement your SUB message processing logic
-    // For now, just return a placeholder response
-    "OK".to_string()
-}
-
-// Function to handle PUB messages
-fn handle_pub(namespace: String, data: Vec<u8>) -> String {
-    // TODO: Implement your PUB message processing logic
-    // For now, just return a placeholder response
-    "OK".to_string()
-}
-
-// Function to handle RDY messages
-fn handle_rdy(count: u32) -> String {
-    // TODO: Implement your RDY message processing logic
-    // For now, just return a placeholder response
-    "OK".to_string()
-}
-
-// Function to handle FIN messages
-fn handle_ack(message_id: String) -> String {
-    // TODO: Implement your FIN message processing logic
-    // For now, just return a placeholder response
-    "OK".to_string()
-}
-
-fn handle_clean(namespace: String) -> String {
-    // TODO: Implement your FIN message processing logic
-    // For now, just return a placeholder response
-    "OK".to_string()
-}
-
-fn handle_del(namespace: String) -> String {
-    // TODO: Implement your FIN message processing logic
-    // For now, just return a placeholder response
-    "OK".to_string()
-}
+mod ecode;
 
 #[tokio::main]
 async fn main() {
@@ -111,53 +24,94 @@ async fn handle_client(socket: TcpStream) {
     let (mut reader, mut writer) = socket.into_split();
 
     // read instruction
-    let mut instruction: Vec<u8> = Vec::new();
-    while let Ok(v) = reader.read_u8().await {
-        if v == b' ' {
-            break;
-        }
-        instruction.push(v);
-    }
-    let instruction = String::from_utf8(instruction).unwrap();
-    let mut err = None;
-    // AUTH body_size(u32) body([u8])
-    match instruction.as_str() {
-        "AUTH" => {
-            println!("receive instruction: AUTH");
-            err = match reader.read_u32().await {
-                Ok(size) => {
-                    println!("body size is {size}");
-                    let mut buffer = vec![0u8; size as usize];
-                    println!("{}", String::from_utf8(buffer).unwrap());
-                    None
-                    // match reader.read(&mut buffer).await {
-                    //     Ok(n) => {
-                    //         match serde_json::from_slice::<AuthBody>(&buffer) {
-                    //             Ok(body) => {
-                    //                 println!("auth body[{n}] {body:?}");
-                    //                 None
-                    //             }
-                    //             Err(err) => {
-                    //                 println!("{}", String::from_utf8(buffer));
-                    //                 Some(format!("deserialize body error: {err}"
-                    //             )),
-                    //         }
-                    // }
-                    // Err(err) => {
-                    //     Some(format!("read body data error: {err}"))
-                    // }
-                    // }
-                }
-                Err(err) => Some(format!("read body size error: {err}")),
-            };
-        }
-        unknown => {
-            eprintln!("unknown instruction: {unknown}")
-        }
+    let mut ins_buf = vec![0; 3];
+    if reader.read(&mut ins_buf).await.is_err() {
+        writer
+            .write_all(&ecode::INS_PARSE_ERR)
+            .await
+            .unwrap_or_default();
+        return;
     }
 
-    if let Some(err) = err {
-        // response error
-        println!("{err}")
+    let instruct = Instruction::from_slice(ins_buf);
+
+    if instruct.is_none() {
+        writer
+            .write_all(&ecode::INS_INVAL_ERR)
+            .await
+            .unwrap_or_default();
+        return;
     }
+
+    if reader.read_u8().await.unwrap_or_default() != b' ' {
+        writer
+            .write_all(&ecode::INS_PARAM_ERR)
+            .await
+            .unwrap_or_default();
+        return;
+    }
+
+    // read body size
+    let body_size: u32 = match reader.read_u32().await {
+        Ok(v) => v,
+        Err(_) => {
+            writer
+                .write_all(&ecode::BODY_SIZE_PARSE_ERR)
+                .await
+                .unwrap_or_default();
+            return;
+        }
+    };
+
+    if body_size == 0 || body_size > MAX_BODY_SIZE {
+        writer
+            .write_all(&ecode::BODY_SIZE_INVAL_ERR)
+            .await
+            .unwrap_or_default();
+        return;
+    }
+
+    if reader.read_u8().await.unwrap_or_default() != b' ' {
+        writer
+            .write_all(&ecode::BODY_PARSE_ERROR)
+            .await
+            .unwrap_or_default();
+        return;
+    }
+
+    // read body
+    let mut body_buf = vec![0u8; body_size as usize];
+    if reader.read(&mut body_buf).await.is_err() {
+        writer
+            .write_all(&ecode::BODY_PARAM_ERR)
+            .await
+            .unwrap_or_default();
+        return;
+    }
+
+    // handle instruction
+    let (data, code) = handle_instraction(instruct.unwrap(), body_buf).await;
+
+    writer.write_all(&code).await.unwrap_or_default();
+    if let Some(data) = data {
+        writer.write(&[0x20]).await.unwrap_or_default();
+        writer.write_all(&data).await.unwrap_or_default();
+    }
+}
+
+async fn handle_instraction(
+    ins: Instruction,
+    body: Vec<u8>,
+) -> (Option<Vec<u8>>, [u8; 4]) {
+    match ins {
+        Instruction::Aup => todo!(),
+        Instruction::Pub => todo!(),
+        Instruction::Sub => todo!(),
+        Instruction::Rdy => todo!(),
+        Instruction::Ack => todo!(),
+        Instruction::Cls => todo!(),
+        Instruction::Del => todo!(),
+    }
+
+    (Some(vec![]), ecode::SUCCESS)
 }
