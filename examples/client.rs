@@ -6,20 +6,15 @@ async fn main() {
     let addr = "127.0.0.1:8080";
     let stream = TcpStream::connect(addr).await.unwrap();
     let (reader, mut writer) = stream.into_split();
-
     let reader = BufReader::new(reader);
-
     tokio::spawn(read_messages(reader));
-    // let mut message = String::from("AUTH");
-    let mut message = "AUTH".as_bytes().to_vec();
-    message.push(b' ');
+    let mut message = Vec::new();
     let body = r#"{"client_id": null,"hostname": "test","user_agent": "test","feature_negotiation": true,"tls_v1": true,"deflate": true,"snappy": true,"sample_rate": 1}"#;
     let body = body.as_bytes();
+    message.push(0x01);
     message.extend_from_slice(&(body.len() as u32).to_be_bytes());
-    message.push(b' ');
     message.extend_from_slice(body);
     send_message(&mut writer, &message).await;
-
     // Wait for user input to terminate the program
     let mut stdin = BufReader::new(io::stdin());
     let mut input = String::new();
@@ -33,6 +28,7 @@ where
     if let Err(e) = writer.write_all(message).await {
         eprintln!("Error sending message: {:?}", e);
     }
+    _ = writer.flush().await;
 }
 
 async fn read_messages<R>(mut reader: R)
