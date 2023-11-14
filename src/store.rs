@@ -1,10 +1,10 @@
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use tokio::sync::Notify;
 use tokio::time::{self, Instant};
-use tracing::debug;
+use tracing::{debug, info};
 
 pub struct Store {
     pub queues: Queues,
@@ -15,6 +15,10 @@ impl Store {
         Self {
             queues: Queues::new(),
         }
+    }
+
+    pub fn queues(&self) -> Queues {
+        self.queues.clone()
     }
 }
 
@@ -45,16 +49,27 @@ impl Queues {
         Self { shared }
     }
 
-    pub fn push(&mut self, topic: String, message: Message) {
+    pub fn push(&mut self, topic: String, body: Bytes) {
         let mut state = self.shared.state.lock().unwrap();
-        let queue = state
-            .queues
-            .entry(topic)
-            .or_insert_with(|| BinaryHeap::new());
+        let queue =
+            state.queues.entry(topic).or_insert_with(|| VecDeque::new());
         if queue.len() >= crate::config::MAX_QUEUE_LENGTH {
-            // todo heap overflow?
+            queue.pop_front();
         }
-        queue.push(message);
+        queue.push_back(body);
+    }
+
+    pub fn mpush(&mut self, topic: String, bodys: Vec<Bytes>) {
+        let mut state = self.shared.state.lock().unwrap();
+        let queue =
+            state.queues.entry(topic).or_insert_with(|| VecDeque::new());
+        for body in bodys {
+            if queue.len() >= crate::config::MAX_QUEUE_LENGTH {
+                // discard the oldest message from the queue.
+                queue.pop_back();
+            }
+            queue.push_front(body);
+        }
     }
 
     pub fn len(&mut self, topic: String) -> u32 {
@@ -65,12 +80,20 @@ impl Queues {
         }
     }
 
-    pub fn pop(&mut self, topic: String) -> Option<Message> {
+    pub fn pop(&mut self, topic: String) -> Option<Bytes> {
         let mut state = self.shared.state.lock().unwrap();
-        state.queues.get_mut(&topic).and_then(|q| q.pop())
+        state.queues.get_mut(&topic).and_then(|q| q.pop_back())
     }
 
-    pub fn clear(&mut self, topic: String) {
+    pub fn mpop(&mut self, topic: String, n: usize) -> Option<Vec<Bytes>> {
+        let mut state = self.shared.state.lock().unwrap();
+        state
+            .queues
+            .get_mut(&topic)
+            .map(|q| q.drain(q.len().saturating_sub(n)..).collect())
+    }
+
+    pub fn clear(&self, topic: String) {
         let mut state = self.shared.state.lock().unwrap();
         state.queues.entry(topic).and_modify(|q| q.clear());
     }
@@ -90,7 +113,7 @@ impl Queues {
 
 #[derive(Debug)]
 pub struct State {
-    pub queues: HashMap<String, BinaryHeap<Message>>,
+    pub queues: HashMap<String, VecDeque<Bytes>>,
     pub shutdown: bool,
 }
 
@@ -132,6 +155,7 @@ impl Shared {
 async fn background_task(shared: Arc<Shared>) {
     // If the shutdown flag is set, then the task should exit.
     while !shared.is_shutdown() {
+        info!("background task start");
         if let Some(when) = shared.loop_bgtask() {
             // Wait until the next task **or** until the background task
             // This is done by looping.
@@ -144,26 +168,5 @@ async fn background_task(shared: Arc<Shared>) {
             shared.background_task.notified().await;
         }
     }
-
-    debug!("Purge background task shut down")
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Message {
-    pub body: Bytes,
-    pub priority: u8,
-}
-
-// Implement Ord and PartialOrd traits for Message based on priority
-impl Ord for Message {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Sorting by priority in reverse order
-        self.priority.cmp(&other.priority).reverse()
-    }
-}
-
-impl PartialOrd for Message {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
+    info!("background task shut down")
 }

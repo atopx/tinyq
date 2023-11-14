@@ -2,16 +2,15 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc, Semaphore};
 use tokio::time;
 use tracing::{error, info, instrument};
 
-use crate::config::{MAX_BODY_SIZE, MAX_CONNECTIONS};
+use crate::config::MAX_CONNECTIONS;
+use crate::connection::Connection;
+use crate::shutdown::Shutdown;
 use crate::store::{Queues, Store};
-
-use super::command::{self, ecode, Command};
 
 struct Server {
     /// Shared database handle.
@@ -29,18 +28,31 @@ struct Server {
 
 impl Server {
     #[instrument(skip(self))]
-    pub async fn run(&mut self) -> crate::result::Result<()> {
+    pub async fn run(&mut self) -> crate::ecode::Result<()> {
         info!("accepting inbound connections");
 
         loop {
+            // Wait for a permit to become available
             let permit = self.max_conn.clone().acquire_owned().await.unwrap();
 
+            // Accept a new socket. This will attempt to perform error handling.
+            // The `accept` method internally attempts to recover errors, so an
+            // error here is non-recoverable.
             let socket = self.accept().await?;
 
-            let queues = self.store.queues.clone();
+            let mut handler = Handler {
+                queues: self.store.queues(),
+                connect: Connection::new(socket),
+                shutdown: Shutdown::new(self.notify_shutdown.subscribe()),
+                _shutdown_complete: self.shutdown_complete_tx.clone(),
+            };
 
             tokio::spawn(async move {
-                handle_client(socket, queues).await;
+                // Process the connection. If an error is encountered, log it.
+                if let Err(err) = handler.run().await {
+                    error!(cause = ?err, "connection error");
+                    let _ = handler.connect.write_error(err).await;
+                }
                 // Move the permit into the task and drop it after completion.
                 // This returns the permit back to the semaphore.
                 drop(permit);
@@ -48,7 +60,7 @@ impl Server {
         }
     }
 
-    async fn accept(&mut self) -> crate::result::Result<TcpStream> {
+    async fn accept(&mut self) -> crate::ecode::Result<TcpStream> {
         let mut backoff = 1;
 
         // Try to accept a few times
@@ -59,7 +71,8 @@ impl Server {
                 Ok((socket, _)) => return Ok(socket),
                 Err(err) => {
                     if backoff > 64 {
-                        return Err(err.into());
+                        error!("{}", err);
+                        return Err(crate::ecode::ECode::ServerBusy);
                     }
                 }
             }
@@ -119,64 +132,32 @@ pub async fn run(listener: TcpListener, shutdown: impl Future) {
     let _ = shutdown_complete_rx.recv().await;
 }
 
-async fn handle_client(socket: TcpStream, queues: Queues) {
-    let (mut reader, mut writer) = socket.into_split();
+#[derive(Debug)]
+struct Handler {
+    queues: Queues,
+    connect: Connection,
+    shutdown: Shutdown,
+    /// Not used directly. Instead, when `Handler` is dropped...?
+    _shutdown_complete: mpsc::Sender<()>,
+}
 
-    // read instruction
-    let instruct: Command = if let Ok(v) = reader.read_u8().await {
-        v.into()
-    } else {
-        writer
-            .write(&[ecode::INS_PARSE_ERR])
-            .await
-            .unwrap_or_default();
-        return;
-    };
+impl Handler {
+    #[instrument(skip(self))]
+    async fn run(&mut self) -> crate::ecode::Result<()> {
+        while !self.shutdown.is_shutdown() {
+            let cmd = tokio::select! {
+                res = self.connect.read_command() => res?,
+                _ = self.shutdown.recv() => {
+                    // If a shutdown signal is received, return from `run`.
+                    // This will result in the task terminating.
+                    return Ok(());
+                }
+            };
 
-    if instruct == command::NONE {
-        writer
-            .write(&[ecode::INS_INVAL_ERR])
-            .await
-            .unwrap_or_default();
-        return;
-    }
-
-    // read body size
-    let body_size: u32 = match reader.read_u32().await {
-        Ok(v) => v,
-        Err(_) => {
-            writer
-                .write(&[ecode::BODY_SIZE_PARSE_ERR])
-                .await
-                .unwrap_or_default();
-            return;
+            cmd.apply(&self.queues, &mut self.connect, &mut self.shutdown)
+                .await?;
         }
-    };
 
-    // body_size too large
-    if body_size == 0 || body_size > MAX_BODY_SIZE {
-        writer
-            .write(&[ecode::BODY_SIZE_INVAL_ERR])
-            .await
-            .unwrap_or_default();
-        return;
-    }
-
-    // read body
-    let mut body_buf = vec![0u8; body_size as usize];
-    if reader.read(&mut body_buf).await.is_err() {
-        writer
-            .write(&[ecode::BODY_PARAM_ERR])
-            .await
-            .unwrap_or_default();
-        return;
-    }
-
-    // handle instruction
-    let (code, size, data) = command::handle(queues, instruct, body_buf).await;
-    writer.write(&[code]).await.unwrap_or_default();
-    writer.write(&size.to_be_bytes()).await.unwrap_or_default();
-    if size > 0 {
-        writer.write_all(&data).await.unwrap_or_default();
+        Ok(())
     }
 }

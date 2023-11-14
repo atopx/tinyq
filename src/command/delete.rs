@@ -15,7 +15,6 @@ impl Action {
         println!("COMMAND auth {}", String::from_utf8(body.to_vec()).unwrap());
         Ok(())
     }
-
     pub(crate) async fn apply(
         &self,
         queue: &Queues,

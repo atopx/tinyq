@@ -1,36 +1,72 @@
-use crate::store::Queues;
+use bytes::Bytes;
+
+use crate::{connection::Connection, shutdown::Shutdown, store::Queues};
 
 pub mod auth;
 pub mod clear;
-pub mod del;
-pub mod ecode;
-pub mod r#pub;
-pub mod rdy;
-pub mod sub;
+pub mod delete;
+pub mod publish;
+pub mod ready;
+pub mod subscribe;
 
-pub type Command = u8;
+#[derive(Debug)]
+pub enum Command {
+    Auth(auth::Action),
+    Publish(publish::Action),
+    Subscribe(subscribe::Action),
+    Ready(ready::Action),
+    Clear(clear::Action),
+    Delete(delete::Action),
+}
 
-pub const NONE: Command = 0x00;
-pub const AUTH: Command = 0x01;
-pub const PUB: Command = 0x02;
-pub const SUB: Command = 0x03;
-pub const RDY: Command = 0x04;
-pub const CLEAN: Command = 0x06;
-pub const DEL: Command = 0x07;
+impl Command {
+    pub fn from_u8(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(Command::Auth(auth::Action::new())),
+            2 => Some(Command::Publish(publish::Action::new())),
+            3 => Some(Command::Subscribe(subscribe::Action::new())),
+            4 => Some(Command::Ready(ready::Action::new())),
+            6 => Some(Command::Clear(clear::Action::new())),
+            7 => Some(Command::Delete(delete::Action::new())),
+            _ => None,
+        }
+    }
 
-pub async fn handle(
-    queues: Queues,
-    ins: Command,
-    body: Vec<u8>,
-) -> (u8, u32, Vec<u8>) {
-    let (code, data): (ecode::ECode, Vec<u8>) = match ins {
-        AUTH => auth::handle(queues, body).await,
-        PUB => r#pub::handle(queues, body).await,
-        SUB => sub::handle(queues, body).await,
-        RDY => rdy::handle(queues, body).await,
-        DEL => del::handle(queues, body).await,
-        CLEAN => clear::handle(queues, body).await,
-        _ => (ecode::INS_PARSE_ERR, Vec::new()),
-    };
-    (code, data.len() as u32, data)
+    pub(crate) async fn parse(&self, body: Bytes) -> crate::ecode::Result<()> {
+        match self {
+            Self::Auth(cmd) => cmd.parse(body).await,
+            Self::Publish(cmd) => cmd.parse(body).await,
+            Self::Subscribe(cmd) => cmd.parse(body).await,
+            Self::Ready(cmd) => cmd.parse(body).await,
+            Self::Clear(cmd) => cmd.parse(body).await,
+            Self::Delete(cmd) => cmd.parse(body).await,
+        }
+    }
+
+    pub(crate) async fn apply(
+        &self,
+        queues: &Queues,
+        dst: &mut Connection,
+        shutdown: &mut Shutdown,
+    ) -> crate::ecode::Result<()> {
+        match self {
+            Self::Auth(cmd) => cmd.apply(queues, dst).await,
+            Self::Publish(cmd) => cmd.apply(queues, dst).await,
+            Self::Subscribe(cmd) => cmd.apply(queues, dst, shutdown).await,
+            Self::Ready(cmd) => cmd.apply(queues, dst).await,
+            Self::Clear(cmd) => cmd.apply(queues, dst).await,
+            Self::Delete(cmd) => cmd.apply(queues, dst).await,
+        }
+    }
+}
+
+trait CommandAction {
+    fn parse(&self, body: Bytes) -> crate::ecode::Result<()> {
+        println!("COMMAND auth {}", String::from_utf8(body.to_vec()).unwrap());
+        Ok(())
+    }
+
+    fn apply(queue: &Queues, dst: &mut Connection) -> crate::ecode::Result<()> {
+        Ok(())
+    }
 }

@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
-use crate::{connection::Connection, store::Queues};
+use crate::{connection::Connection, shutdown::Shutdown, store::Queues};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Action {}
@@ -20,6 +20,7 @@ impl Action {
         &self,
         queue: &Queues,
         dst: &mut Connection,
+        shutdown: &mut Shutdown,
     ) -> crate::ecode::Result<()> {
         Ok(())
     }
