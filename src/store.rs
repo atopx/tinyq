@@ -1,5 +1,4 @@
-use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap, VecDeque};
+use std::collections::{BinaryHeap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
@@ -27,7 +26,6 @@ impl Drop for Store {
 
 #[derive(Debug, Clone)]
 pub struct Queues {
-    /// Handle to shared state. The background task will also have an `Arc<Shared>`.
     pub shared: Arc<Shared>,
 }
 
@@ -47,19 +45,39 @@ impl Queues {
         Self { shared }
     }
 
-    pub async fn push(
-        &mut self,
-        topic: String,
-        message: Message,
-    ) -> crate::result::Result<()> {
+    pub fn push(&mut self, topic: String, message: Message) {
         let mut state = self.shared.state.lock().unwrap();
-        let queue = state.queues.entry(topic).or_insert_with(|| Vec::new());
-        let priority = message.priority as usize;
-        while queue.len() <= priority {
-            queue.push(BinaryHeap::new());
+        let queue = state
+            .queues
+            .entry(topic)
+            .or_insert_with(|| BinaryHeap::new());
+        if queue.len() >= crate::config::MAX_QUEUE_LENGTH {
+            // todo heap overflow?
         }
-        queue[priority].push(message);
-        Ok(())
+        queue.push(message);
+    }
+
+    pub fn len(&mut self, topic: String) -> u32 {
+        let state = self.shared.state.lock().unwrap();
+        match state.queues.get(&topic) {
+            Some(q) => q.len() as u32,
+            None => 0,
+        }
+    }
+
+    pub fn pop(&mut self, topic: String) -> Option<Message> {
+        let mut state = self.shared.state.lock().unwrap();
+        state.queues.get_mut(&topic).and_then(|q| q.pop())
+    }
+
+    pub fn clear(&mut self, topic: String) {
+        let mut state = self.shared.state.lock().unwrap();
+        state.queues.entry(topic).and_modify(|q| q.clear());
+    }
+
+    pub fn del(&mut self, topic: String) {
+        let mut state = self.shared.state.lock().unwrap();
+        state.queues.remove(&topic);
     }
 
     pub fn shutdown_bgtask(&self) {
@@ -72,7 +90,7 @@ impl Queues {
 
 #[derive(Debug)]
 pub struct State {
-    pub queues: HashMap<String, Vec<BinaryHeap<Message>>>,
+    pub queues: HashMap<String, BinaryHeap<Message>>,
     pub shutdown: bool,
 }
 
@@ -92,7 +110,7 @@ pub struct Shared {
 
 impl Shared {
     fn loop_bgtask(&self) -> Option<Instant> {
-        let mut state = self.state.lock().unwrap();
+        let state = self.state.lock().unwrap();
         if state.shutdown {
             // The database is shutting down. All handles to the shared state
             // have dropped. The background task should exit.
@@ -139,7 +157,8 @@ pub struct Message {
 // Implement Ord and PartialOrd traits for Message based on priority
 impl Ord for Message {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.priority.cmp(&other.priority).reverse() // Sorting by priority in reverse order
+        // Sorting by priority in reverse order
+        self.priority.cmp(&other.priority).reverse()
     }
 }
 

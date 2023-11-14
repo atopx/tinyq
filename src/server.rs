@@ -11,7 +11,7 @@ use tracing::{error, info, instrument};
 use crate::config::{MAX_BODY_SIZE, MAX_CONNECTIONS};
 use crate::store::{Queues, Store};
 
-use super::instruction::{self, ecode, Instruction};
+use super::command::{self, ecode, Command};
 
 struct Server {
     /// Shared database handle.
@@ -123,7 +123,7 @@ async fn handle_client(socket: TcpStream, queues: Queues) {
     let (mut reader, mut writer) = socket.into_split();
 
     // read instruction
-    let instruct: Instruction = if let Ok(v) = reader.read_u8().await {
+    let instruct: Command = if let Ok(v) = reader.read_u8().await {
         v.into()
     } else {
         writer
@@ -133,7 +133,7 @@ async fn handle_client(socket: TcpStream, queues: Queues) {
         return;
     };
 
-    if instruct == instruction::NONE {
+    if instruct == command::NONE {
         writer
             .write(&[ecode::INS_INVAL_ERR])
             .await
@@ -173,8 +173,7 @@ async fn handle_client(socket: TcpStream, queues: Queues) {
     }
 
     // handle instruction
-    let (code, size, data) =
-        instruction::handle(queues, instruct, body_buf).await;
+    let (code, size, data) = command::handle(queues, instruct, body_buf).await;
     writer.write(&[code]).await.unwrap_or_default();
     writer.write(&size.to_be_bytes()).await.unwrap_or_default();
     if size > 0 {
