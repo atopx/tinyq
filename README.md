@@ -1,8 +1,10 @@
+<div align=center>
+
 # TINYQ
 
-- light, light, light
-- fast, fast, fast
-- simple, simple, simple
+An fast, light, straightforward, high performance, stateless message queue, supporting both queue and topic modes, implemented using Rust and Tokio.
+
+</div>
 
 # Develop
 
