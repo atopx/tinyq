@@ -8,6 +8,10 @@ An fast, light, straightforward, high performance, stateless message queue, supp
 
 # Develop
 
+## Sequence Diagram for Network Interaction
+
+![](./docs/network.png)
+
 ## The current development status of the TinyQ
 
 ![](./docs/progress.jpg)
