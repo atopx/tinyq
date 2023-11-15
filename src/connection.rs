@@ -3,7 +3,7 @@ use std::io;
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 use tokio::net::TcpStream;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::command::Command;
 use crate::config::MAX_BODY_SIZE;
@@ -46,9 +46,10 @@ impl Connection {
                 if future.is_err() {
                     return Err(ECode::AuthErr);
                 };
+                let s = String::from_utf8_lossy(&buffer);
+                debug!("read client[{}] password: {}", self.client, s);
                 match String::from_utf8_lossy(&buffer).trim() {
                     crate::config::PASSWORD => {
-                        // self.stream.
                         info!("client[{}] auth success", self.client);
                         if self.write_code(ECode::Success).await.is_err() {
                             return Err(ECode::ServerInternalErr);

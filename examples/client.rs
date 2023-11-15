@@ -10,16 +10,20 @@ async fn main() -> io::Result<()> {
     let mut stream = TcpStream::connect(addr).await.unwrap();
 
     let code = stream.read_u8().await.unwrap();
+    println!("read code: {code}");
+    // code=100: IntractInputPassword
     if code != 100 {
         panic!("server accept failed. error code {code}")
     }
     // auth
+    println!("write password: {PASSWORD}");
     stream.write_all(PASSWORD.as_bytes()).await?;
 
     let code = stream.read_u8().await.unwrap();
     if code != 0 {
         panic!("server auth failed. error code {code}")
     }
+    println!("server auth success.");
     println!("close connection.");
     Ok(())
 }
