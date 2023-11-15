@@ -49,7 +49,7 @@ impl Queues {
         Self { shared }
     }
 
-    pub fn push(&mut self, topic: String, body: Bytes) {
+    pub fn push(&self, topic: String, body: Bytes) {
         let mut state = self.shared.state.lock().unwrap();
         let queue =
             state.queues.entry(topic).or_insert_with(|| VecDeque::new());
@@ -59,7 +59,7 @@ impl Queues {
         queue.push_back(body);
     }
 
-    pub fn mpush(&mut self, topic: String, bodys: Vec<Bytes>) {
+    pub fn mpush(&self, topic: String, bodys: Vec<Bytes>) {
         let mut state = self.shared.state.lock().unwrap();
         let queue =
             state.queues.entry(topic).or_insert_with(|| VecDeque::new());
@@ -72,7 +72,7 @@ impl Queues {
         }
     }
 
-    pub fn len(&mut self, topic: String) -> u32 {
+    pub fn len(&self, topic: String) -> u32 {
         let state = self.shared.state.lock().unwrap();
         match state.queues.get(&topic) {
             Some(q) => q.len() as u32,
@@ -80,12 +80,12 @@ impl Queues {
         }
     }
 
-    pub fn pop(&mut self, topic: String) -> Option<Bytes> {
+    pub fn pop(&self, topic: String) -> Option<Bytes> {
         let mut state = self.shared.state.lock().unwrap();
         state.queues.get_mut(&topic).and_then(|q| q.pop_back())
     }
 
-    pub fn mpop(&mut self, topic: String, n: usize) -> Option<Vec<Bytes>> {
+    pub fn mpop(&self, topic: String, n: usize) -> Option<Vec<Bytes>> {
         let mut state = self.shared.state.lock().unwrap();
         state
             .queues
@@ -98,7 +98,7 @@ impl Queues {
         state.queues.entry(topic).and_modify(|q| q.clear());
     }
 
-    pub fn del(&mut self, topic: String) {
+    pub fn del(&self, topic: String) {
         let mut state = self.shared.state.lock().unwrap();
         state.queues.remove(&topic);
     }

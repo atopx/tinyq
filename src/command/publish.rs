@@ -1,19 +1,20 @@
+use crate::{connection::Connection, store::Queues};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-
-use crate::{connection::Connection, store::Queues};
+use tracing::error;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Action {}
 
 impl Action {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    pub(crate) async fn parse(&self, body: Bytes) -> crate::ecode::Result<()> {
-        println!("COMMAND auth {}", String::from_utf8(body.to_vec()).unwrap());
-        Ok(())
+    pub async fn new(body: Bytes) -> crate::ecode::Result<Self> {
+        match String::from_utf8(body.to_vec()) {
+            Ok(v) => Ok(Self {}),
+            Err(e) => {
+                error!("[clear] parse err {e}");
+                Err(crate::ecode::ECode::BodyInvalErr)
+            }
+        }
     }
 
     pub(crate) async fn apply(

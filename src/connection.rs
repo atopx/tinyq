@@ -26,14 +26,10 @@ impl Connection {
 
     pub async fn read_command(&mut self) -> Result<Command> {
         match self.stream.read_u8().await {
-            Ok(v) => match Command::from_u8(v) {
-                Some(cmd) => {
-                    let body = self.read_body().await?;
-                    cmd.parse(body).await?;
-                    Ok(cmd)
-                }
-                None => Err(ECode::CmdInvalErr),
-            },
+            Ok(v) => {
+                let body = self.read_body().await?;
+                Ok(Command::new(v, body).await?)
+            }
             Err(_) => Err(ECode::CmdParasErr),
         }
     }
@@ -53,11 +49,18 @@ impl Connection {
 
     pub async fn read_body(&mut self) -> Result<Bytes> {
         let body_size = self.read_body_size().await?;
+        if body_size == 0 {
+            return Ok(Bytes::new());
+        }
         let mut buffer = BytesMut::with_capacity(body_size as usize);
         if self.stream.read_buf(&mut buffer).await.is_err() {
             return Err(ECode::BodyParseErr);
         }
         Ok(buffer.into())
+    }
+
+    pub async fn write_success_no_data(&mut self) -> io::Result<()> {
+        self.write_error(ECode::Success).await
     }
 
     pub async fn write_error(&mut self, code: ECode) -> io::Result<()> {

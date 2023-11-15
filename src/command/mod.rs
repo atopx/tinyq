@@ -20,26 +20,15 @@ pub enum Command {
 }
 
 impl Command {
-    pub fn from_u8(v: u8) -> Option<Self> {
+    pub async fn new(v: u8, body: Bytes) -> crate::ecode::Result<Self> {
         match v {
-            1 => Some(Command::Auth(auth::Action::new())),
-            2 => Some(Command::Publish(publish::Action::new())),
-            3 => Some(Command::Subscribe(subscribe::Action::new())),
-            4 => Some(Command::Ready(ready::Action::new())),
-            6 => Some(Command::Clear(clear::Action::new())),
-            7 => Some(Command::Delete(delete::Action::new())),
-            _ => None,
-        }
-    }
-
-    pub(crate) async fn parse(&self, body: Bytes) -> crate::ecode::Result<()> {
-        match self {
-            Self::Auth(cmd) => cmd.parse(body).await,
-            Self::Publish(cmd) => cmd.parse(body).await,
-            Self::Subscribe(cmd) => cmd.parse(body).await,
-            Self::Ready(cmd) => cmd.parse(body).await,
-            Self::Clear(cmd) => cmd.parse(body).await,
-            Self::Delete(cmd) => cmd.parse(body).await,
+            1 => Ok(Command::Auth(auth::Action::new(body).await?)),
+            2 => Ok(Command::Publish(publish::Action::new(body).await?)),
+            3 => Ok(Command::Subscribe(subscribe::Action::new(body).await?)),
+            4 => Ok(Command::Ready(ready::Action::new(body).await?)),
+            6 => Ok(Command::Clear(clear::Action::new(body).await?)),
+            7 => Ok(Command::Delete(delete::Action::new(body).await?)),
+            _ => Err(crate::ecode::ECode::CmdInvalErr),
         }
     }
 
