@@ -50,8 +50,8 @@ impl Server {
             tokio::spawn(async move {
                 // Process the connection. If an error is encountered, log it.
                 if let Err(err) = handler.run().await {
-                    error!(cause = ?err, "connection error");
-                    let _ = handler.connect.write_error(err).await;
+                    error!("connection reset peer");
+                    let _ = handler.connect.write_code(err).await;
                 }
                 // Move the permit into the task and drop it after completion.
                 // This returns the permit back to the semaphore.
@@ -145,6 +145,7 @@ impl Handler {
     #[instrument(skip(self))]
     async fn run(&mut self) -> crate::ecode::Result<()> {
         while !self.shutdown.is_shutdown() {
+            self.connect.auth().await?;
             let cmd = tokio::select! {
                 res = self.connect.read_command() => res?,
                 _ = self.shutdown.recv() => {

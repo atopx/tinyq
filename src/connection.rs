@@ -1,11 +1,14 @@
 use bytes::{Bytes, BytesMut};
 use std::io;
+use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 use tokio::net::TcpStream;
+use tracing::{error, info};
 
 use crate::command::Command;
 use crate::config::MAX_BODY_SIZE;
 use crate::ecode::{ECode, Result};
+use tokio::time::{timeout, Duration};
 
 #[derive(Debug)]
 pub struct Connection {
@@ -13,14 +16,52 @@ pub struct Connection {
     // level buffering. The `BufWriter` implementation provided by Tokio is
     // sufficient for our needs.
     stream: BufWriter<TcpStream>,
+    client: SocketAddr,
 }
 
 impl Connection {
     /// Create a new `Connection`, backed by `socket`. Read and write buffers
     /// are initialized.
     pub fn new(socket: TcpStream) -> Connection {
+        let client = socket.peer_addr().unwrap();
+        // client.ip()
         Connection {
+            client,
             stream: BufWriter::new(socket),
+        }
+    }
+
+    pub async fn auth(&mut self) -> Result<()> {
+        if self.write_code(ECode::IntractInputPassword).await.is_err() {
+            return Err(ECode::ServerInternalErr);
+        }
+        let mut buffer = BytesMut::with_capacity(64);
+        match timeout(
+            Duration::from_secs(30),
+            self.stream.read_buf(&mut buffer),
+        )
+        .await
+        {
+            Ok(future) => {
+                if future.is_err() {
+                    return Err(ECode::AuthErr);
+                };
+                match String::from_utf8_lossy(&buffer).trim() {
+                    crate::config::PASSWORD => {
+                        // self.stream.
+                        info!("client[{}] auth success", self.client);
+                        if self.write_code(ECode::Success).await.is_err() {
+                            return Err(ECode::ServerInternalErr);
+                        };
+                        Ok(())
+                    }
+                    _ => Err(ECode::AuthErr),
+                }
+            }
+            Err(e) => {
+                error!("{}", e.to_string());
+                Err(ECode::AuthErr)
+            }
         }
     }
 
@@ -59,11 +100,7 @@ impl Connection {
         Ok(buffer.into())
     }
 
-    pub async fn write_success_no_data(&mut self) -> io::Result<()> {
-        self.write_error(ECode::Success).await
-    }
-
-    pub async fn write_error(&mut self, code: ECode) -> io::Result<()> {
+    pub async fn write_code(&mut self, code: ECode) -> io::Result<()> {
         self.stream.write_u8(code.to_byte()).await?;
         self.stream.flush().await
     }

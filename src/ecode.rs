@@ -2,7 +2,6 @@ use std::fmt::Display;
 
 /// Error code definition,
 /// with the first 4-byte of the reply fixed as 'err_code'
-///
 
 #[derive(Debug, Default)]
 pub enum ECode {
@@ -21,10 +20,16 @@ pub enum ECode {
     BodyParseErr = 30,
     // The command parameters are deficient, lacking the requisite 'body'
     BodyInvalErr = 31,
+    // Auth password failed
+    AuthErr = 40,
+    // Auth password timeout
+    AuthTimeout = 41,
     // Server internal panic
     ServerInternalErr = 50,
     // Too many connections to the server.
     ServerBusy = 51,
+    // Auth information pertaining to one's identity.
+    IntractInputPassword = 100,
 }
 
 impl Display for ECode {

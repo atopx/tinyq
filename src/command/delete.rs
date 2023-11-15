@@ -25,7 +25,7 @@ impl Action {
         dst: &mut Connection,
     ) -> crate::ecode::Result<()> {
         queue.del(self.topic.to_owned());
-        match dst.write_success_no_data().await {
+        match dst.write_code(crate::ecode::ECode::Success).await {
             Ok(_) => Ok(()),
             Err(e) => {
                 error!("[clear] parse err {e}");
