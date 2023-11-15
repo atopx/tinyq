@@ -21,10 +21,7 @@ pub(crate) struct Shutdown {
 impl Shutdown {
     /// Create a new `Shutdown` backed by the given `broadcast::Receiver`.
     pub(crate) fn new(notify: broadcast::Receiver<()>) -> Shutdown {
-        Shutdown {
-            is_shutdown: false,
-            notify,
-        }
+        Shutdown { is_shutdown: false, notify }
     }
 
     /// Returns `true` if the shutdown signal has been received.

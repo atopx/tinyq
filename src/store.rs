@@ -1,9 +1,13 @@
-use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::{Arc, Mutex},
+};
 
 use bytes::Bytes;
-use tokio::sync::Notify;
-use tokio::time::{self, Instant};
+use tokio::{
+    sync::Notify,
+    time::{self, Instant},
+};
 use tracing::{debug, info};
 
 pub struct Store {
@@ -12,9 +16,7 @@ pub struct Store {
 
 impl Store {
     pub fn new() -> Self {
-        Self {
-            queues: Queues::new(),
-        }
+        Self { queues: Queues::new() }
     }
 
     pub fn queues(&self) -> Queues {
@@ -36,10 +38,7 @@ pub struct Queues {
 impl Queues {
     pub fn new() -> Self {
         let shared = Arc::new(Shared {
-            state: Mutex::new(State {
-                queues: HashMap::new(),
-                shutdown: false,
-            }),
+            state: Mutex::new(State { queues: HashMap::new(), shutdown: false }),
             background_task: Notify::new(),
         });
 
@@ -51,8 +50,7 @@ impl Queues {
 
     pub fn push(&self, topic: String, body: Bytes) {
         let mut state = self.shared.state.lock().unwrap();
-        let queue =
-            state.queues.entry(topic).or_insert_with(|| VecDeque::new());
+        let queue = state.queues.entry(topic).or_insert_with(|| VecDeque::new());
         if queue.len() >= crate::config::MAX_QUEUE_LENGTH {
             queue.pop_front();
         }
@@ -61,8 +59,7 @@ impl Queues {
 
     pub fn mpush(&self, topic: String, bodys: Vec<Bytes>) {
         let mut state = self.shared.state.lock().unwrap();
-        let queue =
-            state.queues.entry(topic).or_insert_with(|| VecDeque::new());
+        let queue = state.queues.entry(topic).or_insert_with(|| VecDeque::new());
         for body in bodys {
             if queue.len() >= crate::config::MAX_QUEUE_LENGTH {
                 // discard the oldest message from the queue.

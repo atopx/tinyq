@@ -1,14 +1,18 @@
+use std::{io, net::SocketAddr};
+
 use bytes::{Bytes, BytesMut};
-use std::io;
-use std::net::SocketAddr;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
-use tokio::net::TcpStream;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt, BufWriter},
+    net::TcpStream,
+    time::{timeout, Duration},
+};
 use tracing::{debug, error, info};
 
-use crate::command::Command;
-use crate::config::MAX_BODY_SIZE;
-use crate::ecode::{ECode, Result};
-use tokio::time::{timeout, Duration};
+use crate::{
+    command::Command,
+    config::MAX_BODY_SIZE,
+    ecode::{ECode, Result},
+};
 
 #[derive(Debug)]
 pub struct Connection {
@@ -25,10 +29,7 @@ impl Connection {
     pub fn new(socket: TcpStream) -> Connection {
         let client = socket.peer_addr().unwrap();
         // client.ip()
-        Connection {
-            client,
-            stream: BufWriter::new(socket),
-        }
+        Connection { client, stream: BufWriter::new(socket) }
     }
 
     pub async fn auth(&mut self) -> Result<()> {
@@ -36,12 +37,7 @@ impl Connection {
             return Err(ECode::ServerInternalErr);
         }
         let mut buffer = BytesMut::with_capacity(64);
-        match timeout(
-            Duration::from_secs(30),
-            self.stream.read_buf(&mut buffer),
-        )
-        .await
-        {
+        match timeout(Duration::from_secs(30), self.stream.read_buf(&mut buffer)).await {
             Ok(future) => {
                 if future.is_err() {
                     return Err(ECode::AuthErr);
@@ -55,14 +51,14 @@ impl Connection {
                             return Err(ECode::ServerInternalErr);
                         };
                         Ok(())
-                    }
+                    },
                     _ => Err(ECode::AuthErr),
                 }
-            }
+            },
             Err(e) => {
                 error!("{}", e.to_string());
                 Err(ECode::AuthErr)
-            }
+            },
         }
     }
 
@@ -71,20 +67,19 @@ impl Connection {
             Ok(v) => {
                 let body = self.read_body().await?;
                 Ok(Command::new(v, body).await?)
-            }
+            },
             Err(_) => Err(ECode::CmdParasErr),
         }
     }
 
     async fn read_body_size(&mut self) -> Result<u32> {
         match self.stream.read_u32().await {
-            Ok(v) => {
+            Ok(v) =>
                 if v > MAX_BODY_SIZE {
                     Err(ECode::BodySizeInvalErr)
                 } else {
                     Ok(v)
-                }
-            }
+                },
             Err(_) => Err(ECode::BodySizeParseErr),
         }
     }

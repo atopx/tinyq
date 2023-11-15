@@ -16,7 +16,7 @@ impl Action {
             Err(e) => {
                 error!("[clear] parse err {e}");
                 Err(crate::ecode::ECode::BodyInvalErr)
-            }
+            },
         }
     }
 

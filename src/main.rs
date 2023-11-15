@@ -1,5 +1,4 @@
-use tokio::net::TcpListener;
-use tokio::signal;
+use tokio::{net::TcpListener, signal};
 use tracing::info;
 
 mod command;

@@ -1,16 +1,18 @@
-use std::future::Future;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{future::Future, sync::Arc, time::Duration};
 
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{broadcast, mpsc, Semaphore};
-use tokio::time;
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::{broadcast, mpsc, Semaphore},
+    time,
+};
 use tracing::{error, info, instrument};
 
-use crate::config::MAX_CONNECTIONS;
-use crate::connection::Connection;
-use crate::shutdown::Shutdown;
-use crate::store::{Queues, Store};
+use crate::{
+    config::MAX_CONNECTIONS,
+    connection::Connection,
+    shutdown::Shutdown,
+    store::{Queues, Store},
+};
 
 struct Server {
     /// Shared database handle.
@@ -69,12 +71,11 @@ impl Server {
             // accepted, return it. Otherwise, save the error.
             match self.listener.accept().await {
                 Ok((socket, _)) => return Ok(socket),
-                Err(err) => {
+                Err(err) =>
                     if backoff > 64 {
                         error!("{}", err);
                         return Err(crate::ecode::ECode::ServerBusy);
-                    }
-                }
+                    },
             }
 
             // Pause execution until the back off period elapses.
@@ -113,11 +114,7 @@ pub async fn run(listener: TcpListener, shutdown: impl Future) {
     // Extract the `shutdown_complete` receiver and transmitter
     // explicitly drop `shutdown_transmitter`. This is important, as the
     // `.await` below would otherwise never complete.
-    let Server {
-        shutdown_complete_tx,
-        notify_shutdown,
-        ..
-    } = server;
+    let Server { shutdown_complete_tx, notify_shutdown, .. } = server;
 
     // When `notify_shutdown` is dropped, all tasks which have `subscribe`d will
     // receive the shutdown signal and can exit
@@ -155,8 +152,7 @@ impl Handler {
                 }
             };
 
-            cmd.apply(&self.queues, &mut self.connect, &mut self.shutdown)
-                .await?;
+            cmd.apply(&self.queues, &mut self.connect, &mut self.shutdown).await?;
         }
 
         Ok(())
