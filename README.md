@@ -8,6 +8,10 @@ An fast, light, straightforward, high performance, stateless message queue, supp
 
 # Develop
 
+## The current development status of the TinyQ
+
+![](./docs/progress.jpg)
+
 ## Protocol
 
 ![](./docs/protocol.jpg)
