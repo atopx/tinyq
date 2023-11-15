@@ -2,9 +2,24 @@
 
 # TINYQ
 
-An fast, light, straightforward, high performance, stateless message queue, supporting both queue and topic modes, implemented using Rust and Tokio.
+An fast, light, straightforward, high performance, stateless message queue, supporting both `ConsumeMode` and `BroadcastMode`, implemented using Rust and Tokio.
 
 </div>
+
+
+# Modes
+
+## ConsumeMode(default mode)
+
+Assign tasks among multiple consumers (competitive consumer model)
+
+![](./docs/tinyq-mode-consume.png)
+
+## BroadcastMode
+
+A message will be consumed and processed by multiple consumers separately.
+
+![](./docs/tinyq-mode-broadcast.png)
 
 # Develop
 
