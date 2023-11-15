@@ -5,7 +5,7 @@ use std::{
 
 use bytes::Bytes;
 use tokio::{
-    sync::Notify,
+    sync::{broadcast, Notify},
     time::{self, Instant},
 };
 use tracing::{debug, info};
@@ -38,7 +38,11 @@ pub struct Queues {
 impl Queues {
     pub fn new() -> Self {
         let shared = Arc::new(Shared {
-            state: Mutex::new(State { queues: HashMap::new(), shutdown: false }),
+            state: Mutex::new(State {
+                queues: HashMap::new(),
+                shutdown: false,
+                channels: HashMap::new(),
+            }),
             background_task: Notify::new(),
         });
 
@@ -90,6 +94,67 @@ impl Queues {
             .map(|q| q.drain(q.len().saturating_sub(n)..).collect())
     }
 
+    /// Publish a message to the channel. Returns the number of subscribers
+    /// listening on the channel.
+    /// 将消息发送到通道。返回订阅该通道的订阅者数量。
+    pub(crate) fn publish(&self, topic: &str, body: Bytes) -> usize {
+        let state = self.shared.state.lock().unwrap();
+
+        state
+            .channels
+            .get(topic)
+            // On a successful message send on the broadcast channel, the number
+            // of subscribers is returned. An error indicates there are no
+            // receivers, in which case, `0` should be returned.
+            // 在成功将消息发送到广播通道后，返回订阅者数量。
+            // 如果发生错误，表示没有接收者，应返回0。
+            .map(|tx| tx.send(body).unwrap_or(0))
+            // If there is no entry for the channel key, then there are no
+            // subscribers. In this case, return `0`.
+            // 如果通道键没有找到，则没有订阅者。在这种情况下，返回0。
+            .unwrap_or(0)
+    }
+
+    /// Returns a `Receiver` for the requested channel.
+    /// The returned `Receiver` is used to receive values broadcast by `PUBLISH`
+    /// commands.
+    /// 返回一个用于指定通道的 `Receiver`。
+    /// 返回的 `Receiver` 用于接收通过 `PUBLISH` 命令广播的值
+    pub(crate) fn subscribe(&self, topic: String) -> broadcast::Receiver<Bytes> {
+        use std::collections::hash_map::Entry;
+
+        // Acquire the mutex
+        let mut state = self.shared.state.lock().unwrap();
+
+        // If there is no entry for the requested channel, then create a new
+        // broadcast channel and associate it with the key. If one already
+        // exists, return an associated receiver.
+        // 如果请求的通道不存在，则创建一个新的广播通道并将其与键关联。
+        // 如果已经存在，则返回与该通道关联的接收者。
+        match state.channels.entry(topic) {
+            Entry::Occupied(e) => e.get().subscribe(),
+            Entry::Vacant(e) => {
+                // No broadcast channel exists yet, so create one.
+                //
+                // The channel is created with a capacity of `1024` messages. A
+                // message is stored in the channel until **all** subscribers
+                // have seen it. This means that a slow subscriber could result
+                // in messages being held indefinitely.
+                //
+                // When the channel's capacity fills up, publishing will result
+                // in old messages being dropped. This prevents slow consumers
+                // from blocking the entire system.
+                // 还没有与请求的通道关联的广播通道，所以创建一个新广播通道并将其与键关联。
+                // 广播通道的容量为 `1024` 条消息。消息存储在通道中，直到所有订阅者都看到它。
+                // 这意味着一个慢订阅者可能会导致消息被无限期地保留在通道中。
+                // 当广播通道的容量满时，发布将导致旧消息被丢弃。这将阻止慢消费者阻止整个系统。
+                let (tx, rx) = broadcast::channel(1024);
+                e.insert(tx);
+                rx
+            },
+        }
+    }
+
     pub fn clear(&self, topic: String) {
         let mut state = self.shared.state.lock().unwrap();
         state.queues.entry(topic).and_modify(|q| q.clear());
@@ -103,6 +168,10 @@ impl Queues {
     pub fn shutdown_bgtask(&self) {
         let mut state = self.shared.state.lock().unwrap();
         state.shutdown = true;
+
+        // Drop the lock before signalling the background task. This helps
+        // reduce lock contention by ensuring the background task doesn't
+        // wake up only to be unable to acquire the mutex.
         drop(state);
         self.shared.background_task.notify_one();
     }
@@ -111,6 +180,7 @@ impl Queues {
 #[derive(Debug)]
 pub struct State {
     pub queues: HashMap<String, VecDeque<Bytes>>,
+    channels: HashMap<String, broadcast::Sender<Bytes>>,
     pub shutdown: bool,
 }
 
@@ -120,11 +190,14 @@ pub struct Shared {
     /// not a Tokio mutex. This is because there are no asynchronous operations
     /// being performed while holding the mutex. Additionally, the critical
     /// sections are very small.
+    /// 共享状态由一个互斥锁保护, 这是一个 `std::sync::Mutex` 而不是一个 Tokio 互斥锁.
+    /// 这是因为没有在持有互斥锁时执行任何异步操作。此外，临界区非常小。
     state: Mutex<State>,
 
     /// Notifies the background task handling entry expiration. The background
-    /// task waits on this to be notified, then checks for expired values or the
+    /// task waits on this to be notified, then run task or the
     /// shutdown signal.
+    /// 后台任务等待通知，然后执行任务或关闭信号。
     background_task: Notify,
 }
 
@@ -134,9 +207,13 @@ impl Shared {
         if state.shutdown {
             // The database is shutting down. All handles to the shared state
             // have dropped. The background task should exit.
+            // 数据库正在关闭。所有共享状态的句柄都已释放。后台任务应该退出。
             return None;
         }
-        // loop background task
+        // todo this run background task.
+        // 1. back store timer
+        // 2. check server state
+        // 3. report server info
         None
     }
 

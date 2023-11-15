@@ -9,7 +9,7 @@ An fast, light, straightforward, high performance, stateless message queue, supp
 
 # Modes
 
-## ConsumeMode(default mode)
+## ConsumeMode(default)
 
 Assign tasks among multiple consumers (competitive consumer model)
 
