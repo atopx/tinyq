@@ -29,7 +29,7 @@ pub enum ECode {
     // Too many connections to the server.
     ServerBusy = 51,
     // Auth information pertaining to one's identity.
-    IntractInputPassword = 100,
+    InputPassword = 100,
 }
 
 impl Display for ECode {

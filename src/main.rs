@@ -4,6 +4,7 @@ use tracing::info;
 mod command;
 mod config;
 mod connection;
+mod decode;
 mod ecode;
 mod server;
 mod shutdown;
@@ -17,7 +18,7 @@ async fn main() -> ecode::Result<()> {
         // sets this to be the default, global collector for this application.
         .init();
 
-    let addr = "127.0.0.1:8080";
+    let addr = "127.0.0.1:25131";
     let listener = TcpListener::bind(addr).await.unwrap();
 
     info!("Server running on: {}", addr);

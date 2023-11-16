@@ -6,30 +6,25 @@ An fast, light, straightforward, high performance, stateless message queue, supp
 
 </div>
 
+## Network Interaction
 
-# Modes
+![](./docs/network.png)
 
-## ConsumeMode(default)
+
+## Modes
+
+### ConsumeMode(default)
 
 Assign tasks among multiple consumers (competitive consumer model)
 
 ![](./docs/tinyq-mode-consume.png)
 
-## BroadcastMode
+### BroadcastMode
 
 A message will be consumed and processed by multiple consumers separately.
 
 ![](./docs/tinyq-mode-broadcast.png)
 
-# Develop
-
-## Sequence Diagram for Network Interaction
-
-![](./docs/network.png)
-
-## The current development status of the TinyQ
-
-![](./docs/progress.jpg)
 
 ## Protocol
 
@@ -46,3 +41,8 @@ A message will be consumed and processed by multiple consumers separately.
 - CODE: Type is uint8(fixed 1-byte), refer to [ECode Definition](./src/ecode.rs)
 - DATA_SIZE: Type is uint32(fixed 4-byte)
 - DATA: Returned based on the command and status code (has a value for data_size > 0)
+
+
+# The current development status of the TinyQ
+
+![](./docs/progress.jpg)

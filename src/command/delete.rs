@@ -14,7 +14,7 @@ impl Action {
         match String::from_utf8(body.to_vec()) {
             Ok(topic) => Ok(Self { topic }),
             Err(e) => {
-                error!("[clear] parse err {e}");
+                error!("[delete] parse err {e}");
                 Err(crate::ecode::ECode::BodyInvalErr)
             },
         }
@@ -29,7 +29,7 @@ impl Action {
         match dst.write_code(crate::ecode::ECode::Success).await {
             Ok(_) => Ok(()),
             Err(e) => {
-                error!("[clear] parse err {e}");
+                error!("[delete] reply err {e}");
                 Err(crate::ecode::ECode::ServerInternalErr)
             },
         }

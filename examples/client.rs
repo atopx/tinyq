@@ -7,7 +7,7 @@ pub const PASSWORD: &str = "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca1202
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let addr = "127.0.0.1:8080";
+    let addr = "127.0.0.1:25131";
     let mut stream = TcpStream::connect(addr).await.unwrap();
 
     let code = stream.read_u8().await.unwrap();

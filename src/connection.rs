@@ -33,7 +33,7 @@ impl Connection {
     }
 
     pub async fn auth(&mut self) -> Result<()> {
-        if self.write_code(ECode::IntractInputPassword).await.is_err() {
+        if self.write_code(ECode::InputPassword).await.is_err() {
             return Err(ECode::ServerInternalErr);
         }
         let mut buffer = BytesMut::with_capacity(64);
