@@ -4,7 +4,6 @@ use tracing::info;
 mod command;
 mod config;
 mod connection;
-mod decode;
 mod ecode;
 mod server;
 mod shutdown;
