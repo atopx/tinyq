@@ -1,10 +1,7 @@
-<div align=center>
-
 # TINYQ
 
 An fast, light, straightforward, high performance, stateless message queue, supporting both `ConsumeMode` and `BroadcastMode`, implemented using Rust and Tokio.
 
-</div>
 
 ## Network Interaction
 
