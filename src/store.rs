@@ -1,14 +1,16 @@
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::{Arc, Mutex},
-};
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use bytes::Bytes;
-use tokio::{
-    sync::{broadcast, mpsc, Notify},
-    time::{self, Instant},
-};
-use tracing::{debug, info};
+use tokio::sync::broadcast;
+use tokio::sync::mpsc;
+use tokio::sync::Notify;
+use tokio::time::Instant;
+use tokio::time::{self};
+use tracing::debug;
+use tracing::info;
 
 use crate::config::MAX_QUEUE_LENGTH;
 
@@ -17,19 +19,13 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn new() -> Self {
-        Self { queues: Queues::new() }
-    }
+    pub fn new() -> Self { Self { queues: Queues::new() } }
 
-    pub fn queues(&self) -> Queues {
-        self.queues.clone()
-    }
+    pub fn queues(&self) -> Queues { self.queues.clone() }
 }
 
 impl Drop for Store {
-    fn drop(&mut self) {
-        self.queues.shutdown_bgtask();
-    }
+    fn drop(&mut self) { self.queues.shutdown_bgtask(); }
 }
 
 #[derive(Debug, Clone)]
@@ -40,11 +36,7 @@ pub struct Queues {
 impl Queues {
     pub fn new() -> Self {
         let shared = Arc::new(Shared {
-            state: Mutex::new(State {
-                queues: HashMap::new(),
-                shutdown: false,
-                channels: HashMap::new(),
-            }),
+            state: Mutex::new(State { queues: HashMap::new(), shutdown: false, channels: HashMap::new() }),
             background_task: Notify::new(),
         });
 
@@ -90,10 +82,7 @@ impl Queues {
 
     pub fn mpop(&self, topic: String, n: usize) -> Option<Vec<Bytes>> {
         let mut state = self.shared.state.lock().unwrap();
-        state
-            .queues
-            .get_mut(&topic)
-            .map(|q| q.drain(q.len().saturating_sub(n)..).collect())
+        state.queues.get_mut(&topic).map(|q| q.drain(q.len().saturating_sub(n)..).collect())
     }
 
     /// 将消息发送到通道。返回订阅该通道的订阅者数量。
@@ -131,7 +120,7 @@ impl Queues {
                 let (tx, rx) = broadcast::channel(MAX_QUEUE_LENGTH);
                 e.insert(tx);
                 rx
-            },
+            }
         }
     }
 
@@ -193,9 +182,7 @@ impl Shared {
     ///
     /// The `shutdown` flag is set when all `Db` values have dropped, indicating
     /// that the shared state can no longer be accessed.
-    fn is_shutdown(&self) -> bool {
-        self.state.lock().unwrap().shutdown
-    }
+    fn is_shutdown(&self) -> bool { self.state.lock().unwrap().shutdown }
 }
 
 async fn background_task(shared: Arc<Shared>) {

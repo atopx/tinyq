@@ -1,12 +1,16 @@
 use std::pin::Pin;
 
 use bytes::Bytes;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::sync::broadcast;
-use tokio_stream::{Stream, StreamMap};
+use tokio_stream::Stream;
+use tokio_stream::StreamMap;
 use tracing::error;
 
-use crate::{connection::Connection, shutdown::Shutdown, store::Queues};
+use crate::connection::Connection;
+use crate::shutdown::Shutdown;
+use crate::store::Queues;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Action {
@@ -19,16 +23,13 @@ impl Action {
             Ok(topic) => Ok(Self { topic }),
             Err(e) => {
                 error!("[clear] parse err {e}");
-                Err(crate::ecode::ECode::BodyInvalErr)
-            },
+                Err(crate::ecode::StatusCode::BodyInvalErr)
+            }
         }
     }
 
     pub(crate) async fn apply(
-        &self,
-        queue: &Queues,
-        dst: &mut Connection,
-        shutdown: &mut Shutdown,
+        &self, queue: &Queues, dst: &mut Connection, shutdown: &mut Shutdown,
     ) -> crate::ecode::Result<()> {
         Ok(())
     }
@@ -41,10 +42,7 @@ impl Action {
 type Messages = Pin<Box<dyn Stream<Item = Bytes> + Send>>;
 
 async fn subscribe_to_channel(
-    channel_name: String,
-    subscriptions: &mut StreamMap<String, Messages>,
-    queues: &Queues,
-    dst: &mut Connection,
+    channel_name: String, subscriptions: &mut StreamMap<String, Messages>, queues: &Queues, dst: &mut Connection,
 ) -> crate::ecode::Result<()> {
     let mut rx = queues.subscribe(channel_name.clone());
 

@@ -1,18 +1,22 @@
-use std::{io, net::SocketAddr};
+use std::io;
+use std::net::SocketAddr;
 
-use bytes::{Bytes, BytesMut};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, BufWriter},
-    net::TcpStream,
-    time::{timeout, Duration},
-};
-use tracing::{debug, error, info};
+use bytes::Bytes;
+use bytes::BytesMut;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::io::BufWriter;
+use tokio::net::TcpStream;
+use tokio::time::timeout;
+use tokio::time::Duration;
+use tracing::debug;
+use tracing::error;
+use tracing::info;
 
-use crate::{
-    command::Command,
-    config::MAX_BODY_SIZE,
-    ecode::{ECode, Result},
-};
+use crate::command::Command;
+use crate::config::MAX_BODY_SIZE;
+use crate::ecode::Result;
+use crate::ecode::StatusCode;
 
 #[derive(Debug)]
 pub struct Connection {
@@ -33,32 +37,32 @@ impl Connection {
     }
 
     pub async fn auth(&mut self) -> Result<()> {
-        if self.write_code(ECode::InputPassword).await.is_err() {
-            return Err(ECode::ServerInternalErr);
+        if self.write_code(StatusCode::InputPassword).await.is_err() {
+            return Err(StatusCode::ServerInternalErr);
         }
         let mut buffer = BytesMut::with_capacity(64);
         match timeout(Duration::from_secs(30), self.stream.read_buf(&mut buffer)).await {
             Ok(future) => {
                 if future.is_err() {
-                    return Err(ECode::AuthErr);
+                    return Err(StatusCode::AuthErr);
                 };
                 let s = String::from_utf8_lossy(&buffer);
                 debug!("read client[{}] password: {}", self.client, s);
                 match String::from_utf8_lossy(&buffer).trim() {
                     crate::config::PASSWORD => {
                         info!("client[{}] auth success", self.client);
-                        if self.write_code(ECode::Success).await.is_err() {
-                            return Err(ECode::ServerInternalErr);
+                        if self.write_code(StatusCode::Success).await.is_err() {
+                            return Err(StatusCode::ServerInternalErr);
                         };
                         Ok(())
-                    },
-                    _ => Err(ECode::AuthErr),
+                    }
+                    _ => Err(StatusCode::AuthErr),
                 }
-            },
+            }
             Err(e) => {
                 error!("{}", e.to_string());
-                Err(ECode::AuthErr)
-            },
+                Err(StatusCode::AuthErr)
+            }
         }
     }
 
@@ -67,20 +71,21 @@ impl Connection {
             Ok(v) => {
                 let body = self.read_body().await?;
                 Ok(Command::new(v, body).await?)
-            },
-            Err(_) => Err(ECode::CmdParasErr),
+            }
+            Err(_) => Err(StatusCode::CmdParasErr),
         }
     }
 
     async fn read_body_size(&mut self) -> Result<u32> {
         match self.stream.read_u32().await {
-            Ok(v) =>
+            Ok(v) => {
                 if v > MAX_BODY_SIZE {
-                    Err(ECode::BodySizeInvalErr)
+                    Err(StatusCode::BodySizeInvalErr)
                 } else {
                     Ok(v)
-                },
-            Err(_) => Err(ECode::BodySizeParseErr),
+                }
+            }
+            Err(_) => Err(StatusCode::BodySizeParseErr),
         }
     }
 
@@ -91,18 +96,18 @@ impl Connection {
         }
         let mut buffer = BytesMut::with_capacity(body_size as usize);
         if self.stream.read_buf(&mut buffer).await.is_err() {
-            return Err(ECode::BodyParseErr);
+            return Err(StatusCode::BodyParseErr);
         }
         Ok(buffer.into())
     }
 
-    pub async fn write_code(&mut self, code: ECode) -> io::Result<()> {
+    pub async fn write_code(&mut self, code: StatusCode) -> io::Result<()> {
         self.stream.write_u8(code.to_byte()).await?;
         self.stream.flush().await
     }
 
     pub async fn write_data(&mut self, data: Bytes) -> io::Result<()> {
-        self.stream.write_u8(ECode::Success.to_byte()).await?;
+        self.stream.write_u8(StatusCode::Success.to_byte()).await?;
         self.stream.write_u32(data.len() as u32).await?;
         self.stream.write_all(&data).await?;
         self.stream.flush().await

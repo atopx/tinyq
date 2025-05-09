@@ -1,6 +1,9 @@
 use bytes::Bytes;
 
-use crate::{config::Mode, connection::Connection, shutdown::Shutdown, store::Queues};
+use crate::config::Mode;
+use crate::connection::Connection;
+use crate::shutdown::Shutdown;
+use crate::store::Queues;
 
 pub mod clear;
 pub mod delete;
@@ -32,15 +35,12 @@ impl Command {
             200 => Ok(Command::Clear(clear::Action::new(body).await?)),
             // delete a queue, format: `201 BODY_SIZE TOPIC`, example: 20111first_topic
             201 => Ok(Command::Delete(delete::Action::new(body).await?)),
-            _ => Err(crate::ecode::ECode::CmdInvalErr),
+            _ => Err(crate::ecode::StatusCode::CmdInvalErr),
         }
     }
 
     pub(crate) async fn apply(
-        &self,
-        queues: &Queues,
-        dst: &mut Connection,
-        shutdown: &mut Shutdown,
+        &self, queues: &Queues, dst: &mut Connection, shutdown: &mut Shutdown,
     ) -> crate::ecode::Result<()> {
         match self {
             Self::Topic(cmd) => cmd.apply(queues, dst).await,

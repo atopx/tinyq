@@ -1,18 +1,22 @@
-use std::{future::Future, sync::Arc, time::Duration};
+use std::future::Future;
+use std::sync::Arc;
+use std::time::Duration;
 
-use tokio::{
-    net::{TcpListener, TcpStream},
-    sync::{broadcast, mpsc, Semaphore},
-    time,
-};
-use tracing::{error, info, instrument};
+use tokio::net::TcpListener;
+use tokio::net::TcpStream;
+use tokio::sync::broadcast;
+use tokio::sync::mpsc;
+use tokio::sync::Semaphore;
+use tokio::time;
+use tracing::error;
+use tracing::info;
+use tracing::instrument;
 
-use crate::{
-    config::MAX_CONNECTIONS,
-    connection::Connection,
-    shutdown::Shutdown,
-    store::{Queues, Store},
-};
+use crate::config::MAX_CONNECTIONS;
+use crate::connection::Connection;
+use crate::shutdown::Shutdown;
+use crate::store::Queues;
+use crate::store::Store;
 
 struct Server {
     /// Shared database handle.
@@ -71,11 +75,12 @@ impl Server {
             // accepted, return it. Otherwise, save the error.
             match self.listener.accept().await {
                 Ok((socket, _)) => return Ok(socket),
-                Err(err) =>
+                Err(err) => {
                     if backoff > 64 {
                         error!("{}", err);
-                        return Err(crate::ecode::ECode::ServerBusy);
-                    },
+                        return Err(crate::ecode::StatusCode::ServerBusy);
+                    }
+                }
             }
 
             // Pause execution until the back off period elapses.

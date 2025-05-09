@@ -1,8 +1,10 @@
 use bytes::Bytes;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use tracing::error;
 
-use crate::{connection::Connection, store::Queues};
+use crate::connection::Connection;
+use crate::store::Queues;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Action {
@@ -15,23 +17,19 @@ impl Action {
             Ok(topic) => Ok(Self { topic }),
             Err(e) => {
                 error!("[clear] parse err {e}");
-                Err(crate::ecode::ECode::BodyInvalErr)
-            },
+                Err(crate::ecode::StatusCode::BodyInvalErr)
+            }
         }
     }
 
-    pub(crate) async fn apply(
-        &self,
-        queue: &Queues,
-        dst: &mut Connection,
-    ) -> crate::ecode::Result<()> {
+    pub(crate) async fn apply(&self, queue: &Queues, dst: &mut Connection) -> crate::ecode::Result<()> {
         queue.clear(self.topic.to_owned());
-        match dst.write_code(crate::ecode::ECode::Success).await {
+        match dst.write_code(crate::ecode::StatusCode::Success).await {
             Ok(_) => Ok(()),
             Err(e) => {
                 error!("[clear] reply err {e}");
-                Err(crate::ecode::ECode::ServerInternalErr)
-            },
+                Err(crate::ecode::StatusCode::ServerInternalErr)
+            }
         }
     }
 }

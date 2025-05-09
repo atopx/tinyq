@@ -3,8 +3,8 @@ use std::fmt::Display;
 /// Error code definition,
 /// with the first 4-byte of the reply fixed as 'err_code'
 
-#[derive(Debug, Default)]
-pub enum ECode {
+#[derive(Debug, Default, Clone, Copy)]
+pub enum StatusCode {
     // Default success
     #[default]
     Success = 0,
@@ -32,20 +32,16 @@ pub enum ECode {
     InputPassword = 100,
 }
 
-impl Display for ECode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}", self))
-    }
+impl Display for StatusCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}", self.to_byte()) }
 }
 
-impl ECode {
-    pub fn to_byte(self) -> u8 {
-        self as u8
-    }
+impl StatusCode {
+    pub fn to_byte(self) -> u8 { self as u8 }
 }
 
 /// Error returned by most functions.
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 /// A specialized `Result` type for mini-redis operations.
-pub type Result<T> = std::result::Result<T, ECode>;
+pub type Result<T> = std::result::Result<T, StatusCode>;
